@@ -51,7 +51,11 @@ def get_boxes_from_mask(mask, box_num=1, std = 0.1, max_pixel = 5):
         # Calculate the standard deviation and maximum noise value
         noise_std = min(width, height) * std
         max_noise = min(max_pixel, int(noise_std * 5))
-         # Add random noise to each coordinate
+        # Add random noise to each coordinate
+        # 模拟标注误差，提升模型对不精确提示的适应能力
+        # 尺寸自适应：
+        # 小目标 → 小噪声（避免完全覆盖目标）
+        # 大目标 → 大噪声（增强鲁棒性）
         try:
             noise_x = np.random.randint(-max_noise, max_noise)
         except:

@@ -104,13 +104,13 @@ def _build_sam(
             iou_head_depth=3,
             iou_head_hidden_dim=256,
         ),
-        pixel_mean=[123.675, 116.28, 103.53],
-        pixel_std=[58.395, 57.12, 57.375],
+        pixel_mean=[94.01123382560912, 57.77812151883644, 53.55980543966791], # [123.675, 116.28, 103.53],
+        pixel_std=[79.134414081972, 60.63022484441235, 57.946300608015605], # [58.395, 57.12, 57.375],
     )
     # sam.train()
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
-            state_dict = torch.load(f, map_location="cpu")
+            state_dict = torch.load(f, map_location="cpu", weights_only=False)
         try:
             if 'model' in state_dict.keys():
                 print(encoder_adapter)

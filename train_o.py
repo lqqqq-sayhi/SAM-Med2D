@@ -13,29 +13,11 @@ from tqdm import tqdm
 import numpy as np
 import datetime
 from torch.nn import functional as F
-# from apex import amp
+from apex import amp
 import random
 
-"""
-CUDA_VISIBLE_DEVICES=? nohup python /home/lq/Projects_qin/surgical_semantic_seg/benmarking_algorithms/SAM-Med2D/train.py
- --epochs 2
- --data_path /mnt/hdd2/task2/sam_lora/train
- > /home/lq/Projects_qin/surgical_semantic_seg/proposed_algorithm/SAM-Med2D_LoRA/train.log 2>&1 &
-"""
 
 def parse_args():
-    """
-    work_dir: Specifies the working directory for the training process. Default value is workdir.
-    image_size: Default value is 256.
-    mask_num: Specify the number of masks corresponding to one image, with a default value of 5.
-    data_path: Dataset directory, for example: data_demo.
-    resume: Pretrained weight file, ignore sam_checkpoint if present.
-    sam_checkpoint: Load sam checkpoint.
-    iter_point: Mask decoder iterative runs.
-    multimask: Determines whether to output multiple masks. Default value is True.
-    encoder_adapter: Whether to fine-tune the Adapter layer, set to False only for fine-tuning the decoder.
-    use_amp: Set whether to use mixed-precision training.
-    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--work_dir", type=str, default="workdir", help="work dir")
     parser.add_argument("--run_name", type=str, default="sam-med2d", help="run model name")
@@ -49,12 +31,12 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--resume", type=str, default=None, help="load resume") 
     parser.add_argument("--model_type", type=str, default="vit_b", help="sam model_type")
-    parser.add_argument("--sam_checkpoint", type=str, default="/mnt/hdd2/task2/sam-med2d/sam-med2d_b.pth", help="sam checkpoint")
+    parser.add_argument("--sam_checkpoint", type=str, default="pretrain_model/sam-med2d_b.pth", help="sam checkpoint")
     parser.add_argument("--iter_point", type=int, default=8, help="point iterations")
     parser.add_argument('--lr_scheduler', type=str, default=None, help='lr scheduler')
     parser.add_argument("--point_list", type=list, default=[1, 3, 5, 9], help="point_list")
-    parser.add_argument("--multimask", type=bool, default=False, help="ouput multimask")
-    parser.add_argument("--encoder_adapter", type=bool, default=False, help="use adapter")
+    parser.add_argument("--multimask", type=bool, default=True, help="ouput multimask")
+    parser.add_argument("--encoder_adapter", type=bool, default=True, help="use adapter")
     parser.add_argument("--use_amp", type=bool, default=False, help="use amp")
     args = parser.parse_args()
     if args.resume is not None:
@@ -126,8 +108,6 @@ def train_one_epoch(args, model, optimizer, train_loader, epoch, criterion):
     for batch, batched_input in enumerate(train_loader):
         batched_input = stack_dict_batched(batched_input)
         batched_input = to_device(batched_input, args.device)
-        # batched_image["image"].shape: [batch_size, 1, 3, 256, 256]
-        # batched_image["label"].shape: [batch_size, mask_num, 1, 256, 256]
         
         if random.random() > 0.5:
             batched_input["point_coords"] = None
@@ -156,9 +136,8 @@ def train_one_epoch(args, model, optimizer, train_loader, epoch, criterion):
 
             masks, low_res_masks, iou_predictions = prompt_and_decoder(args, batched_input, model, image_embeddings, decoder_iter = False)
             loss = criterion(masks, labels, iou_predictions)
-            # use_amp = False so I comment:
-            # with amp.scale_loss(loss, optimizer) as scaled_loss:
-            #     scaled_loss.backward(retain_graph=False)
+            with amp.scale_loss(loss, optimizer) as scaled_loss:
+                scaled_loss.backward(retain_graph=False)
 
         else:
             labels = batched_input["label"]
@@ -201,9 +180,8 @@ def train_one_epoch(args, model, optimizer, train_loader, epoch, criterion):
             if args.use_amp:
                 masks, low_res_masks, iou_predictions = prompt_and_decoder(args, batched_input, model, image_embeddings, decoder_iter=True)
                 loss = criterion(masks, labels, iou_predictions)
-                # use_amp = False so I comment:
-                # with amp.scale_loss(loss,  optimizer) as scaled_loss:
-                #     scaled_loss.backward(retain_graph=True)
+                with amp.scale_loss(loss,  optimizer) as scaled_loss:
+                    scaled_loss.backward(retain_graph=True)
             else:
                 masks, low_res_masks, iou_predictions = prompt_and_decoder(args, batched_input, model, image_embeddings, decoder_iter=True)
                 loss = criterion(masks, labels, iou_predictions)
@@ -259,8 +237,7 @@ def main(args):
             print(f"*******load {args.resume}")
 
     if args.use_amp:
-        # use_amp = False so I comment:
-        # model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
+        model, optimizer = amp.initialize(model, optimizer, opt_level="O1")
         print("*******Mixed precision with Apex")
     else:
         print('*******Do not use mixed precision')
@@ -296,9 +273,8 @@ def main(args):
             save_path = os.path.join(args.work_dir, "models", args.run_name, f"epoch{epoch+1}_sam.pth")
             state = {'model': model.float().state_dict(), 'optimizer': optimizer}
             torch.save(state, save_path)
-            # use_amp = False so I comment:
-            # if args.use_amp:
-            #     model = model.half()
+            if args.use_amp:
+                model = model.half()
 
         end = time.time()
         print("Run epoch time: %.2fs" % (end - start))
