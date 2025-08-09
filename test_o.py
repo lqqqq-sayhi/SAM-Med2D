@@ -18,13 +18,6 @@ import random
 import csv
 import json
 
-"""
-CUDA_VISIBLE_DEVICES=1 nohup python /home/lq/Projects_qin/surgical_semantic_seg/benmarking_algorithms/SAM-Med2D/test.py
- --work_dir /mnt/hdd2/task2/sam-med2d/predict
- --data_path /mnt/hdd2/task2/sam_lora/test
- --sam_checkpoint /mnt/hdd2/task2/sam-med2d/models/sam-med2d/epoch50_sam_best_on_epoch23.pth
- --save_pred True > /mnt/hdd2/task2/sam-med2d/predict/predict.log 2>&1 &
-"""
 
 def parse_args():
     parser = argparse.ArgumentParser()

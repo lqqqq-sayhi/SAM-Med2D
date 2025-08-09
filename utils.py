@@ -41,7 +41,12 @@ def get_boxes_from_mask(mask, box_num=1, std = 0.1, max_pixel = 5):
     # duplicate the existing boxes
     elif len(boxes) < box_num:
         num_duplicates = box_num - len(boxes)
-        boxes += [boxes[i % len(boxes)] for i in range(num_duplicates)]
+        # boxes += [boxes[i % len(boxes)] for i in range(num_duplicates)]
+        if len(boxes) > 0:  # Check if boxes exist before duplication
+            boxes += [boxes[i % len(boxes)] for i in range(num_duplicates)]
+        else:
+            # Handle empty case: Pad with dummy boxes (e.g., [0,0,0,0])
+            boxes += [[0, 0, 0, 0]] * num_duplicates
 
     # Perturb each bounding box with noise
     noise_boxes = []

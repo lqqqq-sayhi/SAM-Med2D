@@ -1,3 +1,4 @@
+import glob
 from segment_anything import sam_model_registry, SamPredictor
 import torch.nn as nn
 import torch
@@ -18,9 +19,12 @@ import random
 
 """
 CUDA_VISIBLE_DEVICES=? nohup python /home/lq/Projects_qin/surgical_semantic_seg/benmarking_algorithms/SAM-Med2D/train.py
+ --work_dir /mnt/hdd2/task2/sam-med2d
  --epochs 2
  --data_path /mnt/hdd2/task2/sam_lora/train
  > /home/lq/Projects_qin/surgical_semantic_seg/proposed_algorithm/SAM-Med2D_LoRA/train.log 2>&1 &
+
+CUDA_VISIBLE_DEVICES=1 nohup python /home/lq/Projects_qin/surgical_semantic_seg/benmarking_algorithms/SAM-Med2D/train.py --work_dir /mnt/hdd2/task2/sam-med2d --epochs 50 --data_path /mnt/hdd2/task2/sam_lora/train --resume /mnt/hdd2/task2/sam-med2d/models/sam-med2d/epoch23_sam.pth > /home/lq/Projects_qin/surgical_semantic_seg/proposed_algorithm/SAM-Med2D_LoRA/train_resume.log 2>&1 &
 """
 
 def parse_args():
@@ -61,7 +65,21 @@ def parse_args():
         args.sam_checkpoint = None
     return args
 
-
+def manage_checkpoints(save_dir, max_keep=3):
+    """保留最近max_keep个检查点，删除更旧的"""
+    # 获取所有检查点并按修改时间排序
+    all_checkpoints = glob.glob(os.path.join(save_dir, "*.pth"))
+    all_checkpoints.sort(key=os.path.getmtime)
+    
+    # 删除旧检查点（保留最新的max_keep个）
+    if len(all_checkpoints) > max_keep:
+        for old_checkpoint in all_checkpoints[:-max_keep]:
+            try:
+                os.remove(old_checkpoint)
+                print(f"删除旧检查点: {os.path.basename(old_checkpoint)}")
+            except Exception as e:
+                print(f"删除失败 {old_checkpoint}: {str(e)}")
+                
 def to_device(batch_input, device):
     device_input = {}
     for key, value in batch_input.items():
@@ -225,9 +243,12 @@ def train_one_epoch(args, model, optimizer, train_loader, epoch, criterion):
 
         if int(batch+1) % 200 == 0:
             print(f"epoch:{epoch+1}, iteration:{batch+1}, loss:{loss.item()}")
-            save_path = os.path.join(f"{args.work_dir}/models", args.run_name, f"epoch{epoch+1}_batch{batch+1}_sam.pth")
+            save_dir = os.path.join(f"{args.work_dir}/models", args.run_name)
+            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(save_dir, f"epoch{epoch+1}_batch{batch+1}_sam.pth")
             state = {'model': model.state_dict(), 'optimizer': optimizer}
             torch.save(state, save_path)
+            manage_checkpoints(save_dir, max_keep=5)
 
         train_losses.append(loss.item())
 
@@ -253,7 +274,7 @@ def main(args):
 
     if args.resume is not None:
         with open(args.resume, "rb") as f:
-            checkpoint = torch.load(f)
+            checkpoint = torch.load(f, weights_only=False)
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'].state_dict())
             print(f"*******load {args.resume}")
@@ -293,9 +314,19 @@ def main(args):
 
         if average_loss < best_loss:
             best_loss = average_loss
-            save_path = os.path.join(args.work_dir, "models", args.run_name, f"epoch{epoch+1}_sam.pth")
+            save_dir = os.path.join(args.work_dir, "models", args.run_name)
+            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(save_dir, f"epoch{epoch+1}_sam_best.pth")
             state = {'model': model.float().state_dict(), 'optimizer': optimizer}
             torch.save(state, save_path)
+            # 删除旧的最佳模型（如果存在）
+            save_path_old = os.path.join(save_dir, f"epoch{epoch}_sam_best.pth")
+            if os.path.exists(save_path_old):
+                try:
+                    os.remove(save_path_old)
+                    print(f"删除旧最佳模型")
+                except Exception as e:
+                    print(f"删除旧最佳模型失败: {str(e)}")
             # use_amp = False so I comment:
             # if args.use_amp:
             #     model = model.half()
