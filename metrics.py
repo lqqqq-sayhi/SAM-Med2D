@@ -1,61 +1,58 @@
 import torch
 import numpy as np
 import cv2
-
-def _threshold(x, threshold=None):
-    if threshold is not None:
-        return (x > threshold).type(x.dtype)
-    else:
-        return x
+from scipy.ndimage import distance_transform_edt, binary_erosion
+from medpy import metric
 
 
-def _list_tensor(x, y):
-    m = torch.nn.Sigmoid()
-    if type(x) is list:
-        x = torch.tensor(np.array(x))
-        y = torch.tensor(np.array(y))
-        if x.min() < 0:
-            x = m(x)
-    else:
-        x, y = x, y
-        if x.min() < 0:
-            x = m(x)
-    return x, y
 
+def calculate_metrics(pred, target):
+    """
+    Calculate Intersection over Union (IoU) between two binary masks.
+    
+    Arguments:
+        pred: Predicted mask (tensor)
+        target: Ground truth mask (tensor)
+    
+    Returns:
+        iou: IoU score (tensor scalar)
+        hd95
+    """
 
-def iou(pr, gt, eps=1e-7, threshold = 0.5):
-    pr_, gt_ = _list_tensor(pr, gt)
-    pr_ = _threshold(pr_, threshold=threshold)
-    gt_ = _threshold(gt_, threshold=threshold)
-    intersection = torch.sum(gt_ * pr_,dim=[1,2,3])
-    union = torch.sum(gt_,dim=[1,2,3]) + torch.sum(pr_,dim=[1,2,3]) - intersection
-    return ((intersection + eps) / (union + eps)).cpu().numpy()
+    pred_binary = (pred > 0.5).float()
+    label_binary = (target > 0.5).float()
+    pred_binary = pred_binary.cpu().numpy().astype(bool)
+    label_binary = label_binary.cpu().numpy().astype(bool)
 
+    intersection = np.logical_and(pred_binary, label_binary)
+    union = np.logical_or(pred_binary, label_binary)
+    dice = (2.0 * np.sum(intersection)) / (np.sum(pred_binary) + np.sum(label_binary) + 1e-8)
 
-def dice(pr, gt, eps=1e-7, threshold = 0.5):
-    pr_, gt_ = _list_tensor(pr, gt)
-    pr_ = _threshold(pr_, threshold=threshold)
-    gt_ = _threshold(gt_, threshold=threshold)
-    intersection = torch.sum(gt_ * pr_,dim=[1,2,3])
-    union = torch.sum(gt_,dim=[1,2,3]) + torch.sum(pr_,dim=[1,2,3])
-    return ((2. * intersection +eps) / (union + eps)).cpu().numpy()
+    iou = np.sum(intersection) / np.sum(union) if np.sum(union) > 0 else 0
+    
+    try:
+        if np.sum(pred_binary) > 0 and np.sum(label_binary) > 0:
+            hd95 = metric.binary.hd95(pred_binary, label_binary)
+        else:
+            hd95 = np.nan
+    except:
+        hd95 = np.nan
 
+    return dice, iou, hd95
 
 def SegMetrics(pred, label, metrics):
-    metric_list = []  
+    metric_list = []
     if isinstance(metrics, str):
         metrics = [metrics, ]
+    dice_val, iou_val, hd95_val = calculate_metrics(pred, label)
+    lookup = {'dice': dice_val, 'iou': iou_val, 'hd95': hd95_val}
     for i, metric in enumerate(metrics):
         if not isinstance(metric, str):
             continue
-        elif metric == 'iou':
-            metric_list.append(np.mean(iou(pred, label)))
-        elif metric == 'dice':
-            metric_list.append(np.mean(dice(pred, label)))
+        elif metric in lookup:
+            metric_list.append(lookup[metric])
         else:
             raise ValueError('metric %s not recognized' % metric)
-    if pred is not None:
-        metric = np.array(metric_list)
-    else:
+    if not metric_list:
         raise ValueError('metric mistakes in calculations')
-    return metric
+    return np.array(metric_list)

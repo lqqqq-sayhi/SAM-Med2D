@@ -21,15 +21,19 @@ from torch.nn import functional as F
 import random
 
 """
-CUDA_VISIBLE_DEVICES=0 nohup python /home/lq/Projects_qin/surgical_semantic_seg/benmarking_algorithms/SAM-Med2D/train.py \
+CUDA_VISIBLE_DEVICES=1 nohup python /home/lq/Projects_qin/surgical_semantic_seg/benmarking_algorithms/SAM-Med2D/train.py \
 --work_dir /mnt/hdd2/task2/sam-med2d \
+--run_name exp_6_fold0_resume \
 --epochs 200 \
 --data_path /mnt/hdd2/task2/sam_lora/train \
 --data_path_val /mnt/hdd2/task2/sam_lora/val \
-> /home/lq/Projects_qin/surgical_semantic_seg/proposed_algorithm/SAM-Med2D/train_200.log 2>&1 &
+--train_mode train1 \
+--val_mode val1 \
+> /mnt/hdd2/task2/sam-med2d/exp_6_fold0_resume.log 2>&1 &
 
---resume /mnt/hdd2/task2/sam-med2d/models/sam-med2d/epoch23_sam.pth \
-> /home/lq/Projects_qin/surgical_semantic_seg/proposed_algorithm/SAM-Med2D_LoRA/train_resume.log 2>&1 &
+如果要resume训练，添加参数：
+--resume /mnt/hdd2/task2/sam-med2d/sam-med2d_b.pth \
+> /mnt/hdd2/task2/sam-med2d/exp_6_fold0_resume.log 2>&1 &
 """
 
 def parse_args():
@@ -54,6 +58,8 @@ def parse_args():
     parser.add_argument("--mask_num", type=int, default=5, help="get mask number")
     parser.add_argument("--data_path", type=str, default="data_demo", help="train data path") 
     parser.add_argument("--data_path_val", type=str, default="data_demo", help="validation data path")
+    parser.add_argument("--train_mode", type=str, default="train", help="training mode")
+    parser.add_argument("--val_mode", type=str, default="val", help="validation mode")
     parser.add_argument("--metrics", nargs='+', default=['iou', 'dice'], help="metrics")
     parser.add_argument('--device', type=str, default='cuda')
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
@@ -481,7 +487,7 @@ def main(args):
 
     train_dataset = TrainingDataset(args.data_path, 
                                     image_size=args.image_size, 
-                                    mode='train', 
+                                    mode=args.train_mode, 
                                     point_num=1, 
                                     mask_num=args.mask_num, 
                                     requires_name = False)
@@ -492,7 +498,7 @@ def main(args):
 
     val_dataset = TrainingDataset(args.data_path_val, 
                                   image_size=args.image_size, 
-                                  mode='val', 
+                                  mode=args.val_mode, 
                                   point_num=1, 
                                   mask_num=args.mask_num, requires_name=False)
     val_loader = DataLoader(val_dataset, 
